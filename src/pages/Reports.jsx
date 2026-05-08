@@ -1,0 +1,16 @@
+import { useEffect, useState } from "react";
+import { api } from "../services/api";
+import RiskBadge from "../components/RiskBadge";
+
+function computeRisk(patient){ const score=Math.round((patient?.eegAvg||0)*0.6+(patient?.ppgAvg||0)*0.3); return { score, level: score>4500?"High":score>3200?"Moderate":"Stable" }; }
+export default function Reports({ user, selectedPatient, setSelectedPatient }) {
+  const [reports,setReports]=useState([]); const [active,setActive]=useState(null); const [saved,setSaved]=useState(false);
+  async function load(){ const r=await api.getReports(user); setReports(r); const target= selectedPatient ? r.find(x=>x.patientId===selectedPatient.id) : r[0]; setActive(target || null); }
+  useEffect(()=>{ load(); },[user, selectedPatient]);
+  function update(k,v){ setActive(a=>({...a,[k]:v})); }
+  function updateRec(i,v){ setActive(a=>({...a,recommendations:a.recommendations.map((r,idx)=>idx===i?v:r)})); }
+  async function save(){ await api.saveReport(active,user.id); setSaved(true); setTimeout(()=>setSaved(false),2000); load(); }
+  if(!active) return <div className="empty-state"><h2>No report available</h2><p>Reports appear after a doctor creates a clinical monitoring summary.</p></div>;
+  const editable=user.role==="Doctor"; const risk=computeRisk(active.patient);
+  return <div className="reports-layout"><aside className="report-list"><h3>Reports</h3>{reports.map(r=><button className={active.id===r.id?"active":""} key={r.id} onClick={()=>{setSelectedPatient?.(r.patient);setActive(r)}}><strong>{r.patient?.name}</strong><span>{new Date(r.updatedAt).toLocaleDateString()}</span></button>)}</aside><section className="report-document"><div className="report-header"><div><p className="eyebrow">Medical monitoring report</p><h2>{active.patient?.name}</h2><p>ID {active.patientId} · Updated {new Date(active.updatedAt).toLocaleString()}</p></div><div><RiskBadge level={risk.level}/><small>Score {risk.score}</small></div></div><div className="report-metrics"><div><span>EEG Avg</span><strong>{active.patient?.eegAvg}</strong></div><div><span>PPG Avg</span><strong>{active.patient?.ppgAvg}</strong></div><div><span>Sleep Score</span><strong>{active.patient?.sleepScore}%</strong></div></div><label>Clinical impression{editable?<textarea value={active.diagnosis} onChange={e=>update("diagnosis",e.target.value)}/>:<p>{active.diagnosis}</p>}</label><label>Summary{editable?<textarea value={active.summary} onChange={e=>update("summary",e.target.value)}/>:<p>{active.summary}</p>}</label><label>Restrictions{editable?<input value={active.restrictions} onChange={e=>update("restrictions",e.target.value)}/>:<p>{active.restrictions}</p>}</label><h3>Recommendations</h3>{active.recommendations.map((rec,i)=><div className="rec-row" key={i}><b>{i+1}</b>{editable?<input value={rec} onChange={e=>updateRec(i,e.target.value)}/>:<p>{rec}</p>}</div>)}{editable&&<div className="report-actions"><button className="ghost-btn" onClick={()=>update("recommendations",[...active.recommendations,"New recommendation"])}>Add Recommendation</button><button className="primary-btn" onClick={save}>Save & Notify Patient</button></div>}{saved&&<div className="toast">Report saved and patient notified.</div>}</section></div>
+}
